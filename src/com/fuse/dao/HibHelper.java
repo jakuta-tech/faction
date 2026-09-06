@@ -22,10 +22,17 @@ public class HibHelper {
 	private static EntityManagerFactory emf;
 	private EntityManager em;
 
-	private static final HibHelper singleton = new HibHelper();
+ private static HibHelper singleton = new HibHelper();
 
 	public static HibHelper getInstance() {
 		return singleton;
+	}
+
+	/**
+	 * For unit tests only: replace the singleton with a test instance.
+	 */
+	public static void setSingletonForTest(HibHelper instance) {
+		singleton = instance;
 	}
 
 	public EntityManagerFactory getEMF() {
@@ -36,14 +43,23 @@ public class HibHelper {
 			if (emf == null || !emf.isOpen()) {
 
 				Map<String, String> properties = new HashMap<String, String>();
+				
+			
 				properties.put("hibernate.ogm.datastore.username", FSUtils.getEnv("FACTION_MONGO_USER"));
 				properties.put("hibernate.ogm.datastore.password", FSUtils.getEnv("FACTION_MONGO_PASSWORD"));
 
 				properties.put("hibernate.ogm.datastore.host", FSUtils.getEnv("FACTION_MONGO_HOST"));
-				properties.put("hibernate.ogm.datastore.database", System.getenv("FACTION_MONGO_DATABASE"));
-				properties.put("hibernate.ogm.datastore.port", System.getenv("FACTION_MONGO_PORT"));
-				//if(!System.getenv("FACTION_MONGO_AUTH_DATABASE").equals(""))
-				properties.put("hibernate.ogm.mongodb.authentication_database", System.getenv("FACTION_MONGO_AUTH_DATABASE"));
+				properties.put("hibernate.ogm.datastore.database", FSUtils.getEnv("FACTION_MONGO_DATABASE"));
+				properties.put("hibernate.ogm.datastore.port", FSUtils.getEnv("FACTION_MONGO_PORT"));
+				properties.put("hibernate.ogm.mongodb.authentication_database", FSUtils.getEnv("FACTION_MONGO_AUTH_DATABASE"));
+				properties.put("hibernate.ogm.mongodb.retryWrites", "false");
+				properties.put("hibernate.ogm.mongodb.connectTimeoutMS", "3000");
+				properties.put("hibernate.ogm.mongodb.readPreference", "secondaryPreferred");
+				//properties.put("hibernate.ogm.mongodb.replicaSet", "rs0");
+				if(FSUtils.getEnv("FACTION_MONGO_SSL").equals("true")) {
+					properties.put("hibernate.ogm.mongodb.driver.sslenabled", "true");
+				}
+				
 				
 				emf = Persistence.createEntityManagerFactory("Faction", properties);
 			}
@@ -102,6 +118,21 @@ public class HibHelper {
 		} catch (RollbackException e) {
 			e.printStackTrace();
 		} catch (SystemException e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * Rolls back whatever transaction is bound to the calling thread, if any.
+	 * A unit of work that fails part-way must not leave its transaction
+	 * associated with the thread: the next preJoin() would try to begin a
+	 * nested one and fail, taking the following unit of work down with it.
+	 */
+	public void rollback() {
+		try {
+			if (tm != null && tm.getStatus() != Status.STATUS_NO_TRANSACTION)
+				tm.rollback();
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}

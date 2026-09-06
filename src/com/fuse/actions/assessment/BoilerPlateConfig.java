@@ -60,6 +60,7 @@ public class BoilerPlateConfig extends FSActionSupport {
 
 	@Action(value = "tempDelete")
 	public String tempDelete() {
+		if (this.getSessionUser() == null) return LOGIN;
 		BoilerPlate bp = (BoilerPlate) em.createQuery("from BoilerPlate where id = :id")
 				.setParameter("id", this.tmpId).getResultList()
 				.stream().findFirst().orElse(null);
@@ -72,6 +73,7 @@ public class BoilerPlateConfig extends FSActionSupport {
 	}
 	@Action(value = "tempActive")
 	public String tempActive() {
+		if (this.getSessionUser() == null) return LOGIN;
 		BoilerPlate bp = (BoilerPlate) em.createQuery("from BoilerPlate where id = :id")
 				.setParameter("id", this.tmpId).getResultList()
 				.stream().findFirst().orElse(null);
@@ -87,11 +89,45 @@ public class BoilerPlateConfig extends FSActionSupport {
 	@Action(value = "tempSearchDetail", results = {
 			@Result(name = "tempSearchDetailJson", location = "/WEB-INF/jsp/assessment/tempSearchDetailJSON.jsp") })
 	public String searchTemplateDetail() {
-		BoilerPlate bp = em.find(BoilerPlate.class, this.tmpId);
+		if (this.getSessionUser() == null) return LOGIN;
+		BoilerPlate bp = (BoilerPlate) em
+				.createQuery("from BoilerPlate where id = :id and (global = true or user = :user)")
+				.setParameter("id", this.tmpId)
+				.setParameter("user", this.getSessionUser())
+				.getResultList().stream().findFirst().orElse(null);
+		if (bp == null) return this.ERRORJSON;
 		boilers = new ArrayList();
 		boilers.add(bp);
 
 		return "tempSearchDetailJson";
+	}
+	@Action(value = "globalSave", results = {
+			@Result(name = "tempSearchJson", location = "/WEB-INF/jsp/assessment/tempSearchJSON.jsp") })
+	public String globalSaveTemplate() {
+		if (this.getSessionUser() == null) return LOGIN;
+		BoilerPlate bp = (BoilerPlate) em
+				.createQuery(
+						"from BoilerPlate where id=:id and global=true")
+				.setParameter("id", this.tmpId)
+				.getResultList().stream()
+				.findFirst().orElse(null);
+		if (bp == null) {
+			this._message ="Invalid Boilerplate";
+			return this.ERRORJSON;
+		}
+		bp.setText(FSUtils.sanitizeHTML(this.summary));
+		bp.setUser(this.getSessionUser());
+		bp.setCreated(new Date());
+		bp.setActive(this.active);
+
+		HibHelper.getInstance().preJoin();
+		em.joinTransaction();
+		em.persist(bp);
+		HibHelper.getInstance().commit();
+		boilers = new ArrayList<BoilerPlate>();
+		boilers.add(bp);
+
+		return "tempSearchJson";
 	}
 
 	@Action(value = "tempSave", results = {
@@ -114,7 +150,7 @@ public class BoilerPlateConfig extends FSActionSupport {
 			return this.ERRORJSON;
 		}
 		if (!(this.type.trim().equals("risk") || this.type.trim().equals("summary")
-				|| this.type.trim().equals("exploit"))) {
+				|| this.type.trim().equals("exploit") || this.type.trim().equals("custom field") )) {
 			this._message = "Not a valid type";
 			return this.ERRORJSON;
 		}

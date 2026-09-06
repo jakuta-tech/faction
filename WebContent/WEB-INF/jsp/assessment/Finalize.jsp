@@ -8,19 +8,66 @@
 <bs:mco colsize="12">
 <bs:box type="success" title="Controls">
 <div style="padding-bottom:60px">
+<s:if test="hasTemplate">
   <bs:button color="success" size="md" colsize="3" text="Generate Report" id="genreport"></bs:button>
   <s:if test="assessment.finalReport != null">
     <s:if test="prEnabled">
       <bs:button color="warning" size="md" colsize="3" text="Submit for Peer Review" id="prsubmit"></bs:button>
     </s:if>
-    <bs:button color="primary" size="md" colsize="3" text="Download Report" id="dlreport"></bs:button>
+    <s:if test="assessment.finalReport.effectiveVariants.size() > 1">
+      <div class="col-md-3">
+        <div class="btn-group" style="width:100%">
+          <button type="button" class="btn btn-block btn-primary btn-md dropdown-toggle" data-toggle="dropdown">
+            Download Report <span class="caret"></span>
+          </button>
+          <ul class="dropdown-menu" style="width:100%; background-color:#192338; border-color:#0f1a2b;">
+            <li><a href="DownloadReport?aid=<s:property value="assessment.id"/>&format=docx" target="_blank" rel="noopener noreferrer" style="color:#fff;">Word (.docx)</a></li>
+            <li><a href="DownloadReport?aid=<s:property value="assessment.id"/>&format=pdf" target="_blank" rel="noopener noreferrer" style="color:#fff;">PDF</a></li>
+            <li><a href="DownloadReport?aid=<s:property value="assessment.id"/>&format=encryptedpdf" target="_blank" rel="noopener noreferrer" style="color:#fff;">Encrypted PDF</a></li>
+          </ul>
+        </div>
+        <s:if test="reportPassword != null && reportPassword != ''">
+          <div class="input-group input-group-sm" style="margin-top:8px;">
+            <input type="password" id="reportPasswordField" class="form-control" value="<s:property value="reportPassword"/>" readonly>
+            <span class="input-group-btn">
+              <button class="btn btn-default" type="button" id="toggleReportPassword">
+                <i class="fa fa-eye"></i>
+              </button>
+            </span>
+          </div>
+          <small class="text-muted">Report encryption password</small>
+        </s:if>
+      </div>
+    </s:if>
+    <s:else>
+      <bs:button color="primary" size="md" colsize="3" text="Download Report" id="dlreport"></bs:button>
+    </s:else>
     <bs:button color="danger" size="md" colsize="3" text="Finalize Assessment" id="finalize"></bs:button>
   </s:if>
+  </s:if>
+  <s:else>
+  <div class="alert alert-danger">
+                  <h5><i class="icon fas fa-ban"></i> Alert!</h5>
+  	No Report Template Configured for this Assessment Type. 
+  	Contact Your Administrator.
+                </div>
+  </s:else>
 </div>
 </bs:box>
 </bs:mco>
 </s:if>
 </bs:row>
+<s:if test="assessment.finalized && acadmin">
+<bs:row>
+<bs:mco colsize="12">
+<bs:box type="warning" title="Controls">
+<div style="padding-bottom:60px">
+  <bs:button color="warning" size="md" colsize="3" text="Reopen Assessment" id="reopen"></bs:button>
+</div>
+</bs:box>
+</bs:mco>
+</bs:row>
+</s:if>
 <bs:row>
 <bs:mco colsize="12">
 <ul class="timeline">
@@ -52,6 +99,9 @@
 				</span>
 		</div>
 		</s:if>
+		  <div style="margin-top:10px;">
+			<bs:button color="info" size="md" colsize="3" text="Upload Report" id="uploadReportBtn"></bs:button>
+		  </div>
           
        </div>
      </li>
@@ -116,7 +166,11 @@
        <div class="timeline-item">
 	       <h3 class="timeline-header no-border">Schedule Report Meeting</h3>
 	         <div class="timeline-body">
-	         	 <button class="btn btn-primary" id="openICS" <s:if test="finalized">disabled</s:if>>Open ICS file</button>
+	         	 <button class="btn btn-primary" id="openICS" <s:if test="finalized">disabled</s:if>><i class="fa-solid fa-envelope"></i> Email Meeting Invite</button>
+	         	 <button class="btn btn-primary" id="downloadICS" <s:if test="finalized">disabled</s:if>><i class="fa-solid fa-download"></i> Download Meeting Invite</button>
+	         	 <a class="btn btn-primary"  href="${LiveLink}" target="_blank"><img style="height: 20px" src="../dist/img/outlook.png"/> Open in Live Web</a>
+	         	 <a class="btn btn-danger"  href="${OutlookLink}" target="_blank"><img style="height: 20px" src="../dist/img/outlook.png"/> Open in Outlook Web</a>
+	         	 <a class="btn btn-default"  href="${GoogleLink}" target="_blank"><img style="height: 20px" src="../dist/img/google.png"/> Open in Google Calendar</a>
 	         </div>
        </div>
      </li> 
@@ -140,4 +194,46 @@
 	
 </bs:mco>
 </bs:row>
+
+<script>
+$(document).ready(function() {
+  $("#toggleReportPassword").click(function() {
+    var field = $("#reportPasswordField");
+    var icon = $(this).find("i");
+    if (field.attr("type") === "password") {
+      field.attr("type", "text");
+      icon.removeClass("fa-eye").addClass("fa-eye-slash");
+    } else {
+      field.attr("type", "password");
+      icon.removeClass("fa-eye-slash").addClass("fa-eye");
+    }
+  });
+});
+</script>
+
+<!-- Upload Report Modal -->
+<div class="modal fade" id="uploadReportModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content" style="background-color:#192338; color:#fff;">
+      <div class="modal-header" style="border-bottom-color:#0f1a2b;">
+        <button type="button" class="close" style="color:#fff; opacity:0.8;" data-dismiss="modal">&times;</button>
+        <h4 class="modal-title">Upload Report</h4>
+      </div>
+      <div class="modal-body">
+        <p>Upload a <strong>.docx</strong> or <strong>.pdf</strong> to replace the current report.</p>
+        <form id="uploadReportForm" enctype="multipart/form-data">
+          <div class="form-group">
+		  <input type="file" name="uploadReport" id="uploadReportFile" accept=".docx,.pdf" required="" class="form-control" style="background-color: #192338;color:#fff;border-color:#0f1a2b;">
+          </div>
+          <div id="uploadReportError" class="alert alert-danger" style="display:none;"></div>
+        </form>
+      </div>
+      <div class="modal-footer" style="border-top-color:#0f1a2b;">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="doUploadReport">Upload</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 

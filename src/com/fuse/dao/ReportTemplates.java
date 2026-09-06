@@ -98,7 +98,6 @@ public class ReportTemplates {
 	public void setSaveInDB(Boolean saveInDB) {
 		this.saveInDB = saveInDB;
 	}
-	
 	@Transient
 	public InputStream getTemplate() {
 		String b64Template = this.getBase64EncodedTemplate();

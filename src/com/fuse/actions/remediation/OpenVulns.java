@@ -1,7 +1,9 @@
 package com.fuse.actions.remediation;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.struts2.convention.annotation.Action;
 import org.apache.struts2.convention.annotation.Namespace;
@@ -9,11 +11,13 @@ import org.apache.struts2.convention.annotation.Result;
 
 import com.fuse.actions.FSActionSupport;
 import com.fuse.dao.Assessment;
-import com.fuse.dao.User;
+import com.fuse.dao.FinalReport;
 import com.fuse.dao.Verification;
 import com.fuse.dao.Vulnerability;
 import com.fuse.dao.query.VulnerabilityQueries;
+import com.fuse.utils.Combo;
 import com.fuse.utils.FSUtils;
+import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.mongodb.BasicDBObject;
 
 @Namespace("/portal")
@@ -21,6 +25,7 @@ import com.mongodb.BasicDBObject;
 public class OpenVulns extends FSActionSupport {
 
 	private String appname = "";
+	private String vulnName = "";
 	private String appId = "";
 	private List<Combo> combos;
 	private String crit = "";
@@ -33,10 +38,32 @@ public class OpenVulns extends FSActionSupport {
 	private String open = "";
 	private String closed = "";
 	private String tracking = "";
-	private List<String> risk = new ArrayList();
+	private List<String> risk = new ArrayList<>();
 	private Integer start = 0;
 	private Integer length = 10;
 	private Long count;
+	private List<FinalReport>reports = new ArrayList<>();
+	
+	private String sortRule(String colNum, String dir) {
+		String direction = "1";
+		String param = "vuln.opened";
+		if(dir.equals("desc")) {
+			direction = "-1";
+		}
+		switch(colNum) {
+			case "1" : param = "vuln.name";break;
+			case "2" : param = "name";break;
+			case "3" : param = "assessor[0].fname";break;
+			case "4" : param = "vuln.tracking";break;
+			case "6" : param = "vuln.overall";break;
+			case "7" : param = "vuln.opened";break;
+			case "8" : param = "vuln.devClosed";break;
+			case "9" : param = "vuln.stagingClosed";break;
+			case "10" : param = "vuln.closed";break;
+			default: param ="vuln.opened";
+		}
+		return String.format("{ '$sort': { '%s': %s} },",param, direction);
+	}
 
 	@Action(value = "OpenVulns", results = {
 			@Result(name = "vulnsJson", location = "/WEB-INF/jsp/remediation/vulnsJson.jsp") })
@@ -45,11 +72,12 @@ public class OpenVulns extends FSActionSupport {
 		if (!(this.isAcassessor() || this.isAcmanager() || this.isAcremediation())) {
 			return LOGIN;
 		}
-		User user = this.getSessionUser();
+		Map<String, String[]> map= this.request.getParameterMap();
+		String sortCol = map.get("order[0][column]")[0];
+		String sortDir = map.get("order[0][dir]")[0];
 
-		// EntityManager em = HibHelper.getEM();
 		if (action.equals("get")) {
-
+			this.vulnName = FSUtils.sanitizeMongo(this.vulnName);
 			this.appname = FSUtils.sanitizeMongo(this.appname);
 			this.appId = FSUtils.sanitizeMongo(this.appId);
 			this.appname = FSUtils.sanitizeMongo(this.appname);
@@ -86,6 +114,10 @@ public class OpenVulns extends FSActionSupport {
 				String newMongo = "db.Assessment.aggregate(" + "[ "
 						+ "{ '$lookup': { 'from':'Vulnerability', 'localField': '_id', 'foreignField':'assessmentId', 'as': 'vuln' }},"
 						+ "{'$unwind':'$vuln' }, " + "{'$match': { " + "  'completed' : {'$exists':true},";
+				
+				if (!this.vulnName.equals("")) {
+					newMongo += " 'vuln.name' : {'$regex' : '.*" + this.vulnName + ".*', '$options': 'i' },";
+				}
 				if (!this.appname.equals("")) {
 					newMongo += " 'name' : {'$regex' : '.*" + this.appname + ".*', '$options': 'i' },";
 				}
@@ -94,9 +126,13 @@ public class OpenVulns extends FSActionSupport {
 				}
 
 				if (this.closed.equals("") && !this.open.equals("")) {
-					newMongo += " 'vuln.closed' : {'$exists':false}, ";
+					// open = not closed in production. Items closed in dev
+					// or staging are still open in prod, so they stay here.
+					newMongo += " 'vuln.closed' : {'$exists':false}, "
+							+ " 'vuln.status' : {'$ne': \"" + Vulnerability.StatusClosed + "\"}, ";
 				} else if (!this.closed.equals("") && this.open.equals("")) { // show only closed items
-					newMongo += " 'vuln.closed' : {'$exists':true}, ";
+					newMongo += " '$or' : [ {'vuln.closed' : {'$exists':true}}, "
+							+ "{'vuln.status' : {'$in': " + VulnerabilityQueries.closedStatusArray() + "}} ], ";
 				}
 
 				if (!this.tracking.equals("")) {
@@ -107,8 +143,11 @@ public class OpenVulns extends FSActionSupport {
 				newMongo += "}}";
 
 				String CountQuery = newMongo + ", { '$group': { '_id': '', 'count': { '$sum': 1 } }} ])";
-				newMongo += "," + "{'$limit' : NumberLong('" + (this.start + this.length) + "')},"
-						+ "{'$skip' : NumberLong('" + this.start + "')}" + "])";
+				newMongo += "," 
+						+ this.sortRule(sortCol, sortDir)
+						+ "{'$limit' : NumberLong('" + (this.start + this.length) + "')},"
+						+ "{'$skip' : NumberLong('" + this.start + "')}"
+						+ "])";
 
 				List query = em.createNativeQuery(CountQuery).getResultList();
 				if (query.size() == 0) {
@@ -140,6 +179,12 @@ public class OpenVulns extends FSActionSupport {
 							// combos.add(combo);
 							break;
 						}
+					}
+					if(asmt.getFinalReport() != null) {
+						combo.getReports().add(asmt.getFinalReport());
+					}
+					if(asmt.getRetestReport() != null) {
+						combo.getReports().add(asmt.getRetestReport());
 					}
 
 					combos.add(combo);
@@ -174,7 +219,6 @@ public class OpenVulns extends FSActionSupport {
 			}
 		}
 
-		// em.close();
 
 		return SUCCESS;
 	}
@@ -218,6 +262,14 @@ public class OpenVulns extends FSActionSupport {
 	public void setAppname(String appname) {
 		this.appname = appname;
 	}
+	
+	public String getVulnName() {
+		return vulnName;
+	}
+
+	public void setVulnName(String vulnName) {
+		this.vulnName = vulnName;
+	}
 
 	public String getAppId() {
 		return appId;
@@ -229,13 +281,6 @@ public class OpenVulns extends FSActionSupport {
 
 	public List<Combo> getCombos() {
 		return combos;
-	}
-
-	public class Combo {
-		public Assessment assessment;
-		public Vulnerability vuln;
-		public boolean isVer = false;
-
 	}
 
 	public String getCrit() {
@@ -341,5 +386,22 @@ public class OpenVulns extends FSActionSupport {
 	public void setCount(Long count) {
 		this.count = count;
 	}
+
+	/**
+	 * Escapes a value for safe inclusion inside a JSON string literal. Struts'
+	 * escapeJavaScript escapes a single quote as \' which is NOT a valid JSON
+	 * escape sequence and breaks JSON.parse on the client (the DataTable). This
+	 * produces strictly valid JSON: it escapes ", \\ and control characters and
+	 * leaves single quotes untouched.
+	 */
+	public String jsonEscape(String value) {
+		if (value == null) {
+			return "";
+		}
+		return new String(JsonStringEncoder.getInstance().quoteAsString(value));
+	}
+	
+
+	
 
 }

@@ -11,6 +11,9 @@ import javax.persistence.ManyToOne;
 import javax.persistence.TableGenerator;
 import javax.persistence.Transient;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fuse.utils.FSUtils;
+
 @Entity
 public class User {
 
@@ -22,24 +25,37 @@ public class User {
 	private String lname;
 	private String email;
 	private String username;
+	@JsonIgnore
 	private String passhash;
 	private boolean inActive = false;
+	@JsonIgnore
 	private String avatarGuid;
 	@ManyToOne
 	private Teams team;
+	@JsonIgnore
 	@ManyToOne(cascade = CascadeType.ALL)
 	private Permissions permissions;
+	@JsonIgnore
 	@Transient
 	private int count;
+	@JsonIgnore
 	@Transient
 	private int vcount;
+	@JsonIgnore
 	@Transient
 	private int ocount;
+	@JsonIgnore
 	private Date lastLogin;
+	@JsonIgnore
 	private Date loginTime;
+	@JsonIgnore
 	private Integer failedAuth;
+	@JsonIgnore
 	private String authMethod;
+	@JsonIgnore
 	private String ldapUserDn = "";
+	@JsonIgnore
+	private String copilotToken; // encrypted
 
 	public User(Long id, String first, String last) {
 		this.fname = first;
@@ -126,6 +142,7 @@ public class User {
 		this.inActive = inActive;
 	}
 
+	@JsonIgnore
 	@Transient
 	public int getAssessmentCount() {
 		return count;
@@ -136,6 +153,7 @@ public class User {
 		this.count = count;
 	}
 
+	@JsonIgnore
 	@Transient
 	public int getVerificationCount() {
 		return vcount;
@@ -146,6 +164,7 @@ public class User {
 		this.vcount = count;
 	}
 
+	@JsonIgnore
 	@Transient
 	public int getOOOCount() {
 		return ocount;
@@ -196,7 +215,7 @@ public class User {
 	}
 
 	public void setAuthMethod(String authMethod) {
-		if (authMethod.equals("Native") || authMethod.equals("LDAP") || authMethod.equals("OAUTH2.0"))
+		if (authMethod.equals("Native") || authMethod.equals("LDAP") || authMethod.equals("OAUTH2.0") || authMethod.equals("SAML2"))
 			this.authMethod = authMethod;
 		else
 			this.authMethod = "Native";
@@ -209,7 +228,22 @@ public class User {
 	public void setLdapUserDn(String ldapUserDn) {
 		this.ldapUserDn = ldapUserDn;
 	}
-	
-	
+
+	public String getCopilotToken() {
+		return copilotToken == null ? "" : FSUtils.decryptPassword(copilotToken);
+	}
+
+	public void setCopilotToken(String copilotToken) {
+		if (copilotToken != null && !copilotToken.trim().isEmpty()) {
+			this.copilotToken = FSUtils.encryptPassword(copilotToken.trim());
+		} else {
+			this.copilotToken = null;
+		}
+	}
+
+	@Transient
+	public boolean hasCopilotToken() {
+		return copilotToken != null && !copilotToken.isEmpty();
+	}
 
 }

@@ -71,9 +71,9 @@ public class Remediation extends FSActionSupport{
 			
 		}
 		for(User u : users){
-			if(u.getPermissions().isRemediation())
+			if(u.getPermissions() != null && u.getPermissions().isRemediation())
 				remusers.add(u);
-			if(u.getPermissions().isAssessor())
+			if(u.getPermissions() != null && u.getPermissions().isAssessor())
 				assessors.add(u);
 		}
 		
@@ -126,6 +126,7 @@ public class Remediation extends FSActionSupport{
 							errors=true;
 							break;
 						}else{
+							v.setStatus(Vulnerability.StatusInRetest);
 							vi.setVulnerability(v);
 							break;
 						}
@@ -133,13 +134,7 @@ public class Remediation extends FSActionSupport{
 				}
 				if(!errors){
 					ver.getVerificationItems().add(vi);
-					VulnerabilityQueries.saveAll(this, ver.getVerificationItems().get(0).getVulnerability(), em, "Create Verification", a, ver, vi);
-					//HibHelper.getInstance().preJoin();
-					//em.joinTransaction();
-					//em.persist(a);
-					//em.persist(ver);
-					//em.persist(vi);
-					//HibHelper.getInstance().commit();
+					VulnerabilityQueries.saveAll(this, ver.getVerificationItems().get(0).getVulnerability(), em, "Create Verification", a, ver, vi, vi.getVulnerability());
 				}
 			}
 			String appName = a.getAppId() + " - " + a.getName();
@@ -194,12 +189,13 @@ public class Remediation extends FSActionSupport{
 			VerificationItem vi = new VerificationItem();
 			for(Vulnerability v : a.getVulns()){
 				if(v.getId() == vulnId){
+					v.setStatus(Vulnerability.StatusInRetest);
 					vi.setVulnerability(v);
 					break;
 				}
 			}
 			ver.getVerificationItems().add(vi);
-			VulnerabilityQueries.saveAll(this, vi.getVulnerability(), em, "Adding Vulns to Verification", vi, ver);
+			VulnerabilityQueries.saveAll(this, vi.getVulnerability(), em, "Adding Vulns to Verification", vi, ver, vi.getVulnerability());
 			//em.persist(vi);
 			//em.persist(ver);
 			//HibHelper.getInstance().commit();
@@ -207,7 +203,7 @@ public class Remediation extends FSActionSupport{
 					
 		}else if (action.equals("dateSearch")){
 			List<Verification> dv = em
-					.createQuery("from Verification as a where (a.start <= :start and a.end > :start) or (a.start <= :end and a.end > :end)")
+					.createQuery("from Verification as a where ((a.start <= :start and a.end > :start) or (a.start <= :end and a.end > :end)) and workflowStatus = 'In Queue'")
 					.setParameter("start", sdate)
 					.setParameter("end", edate)
 					.getResultList();

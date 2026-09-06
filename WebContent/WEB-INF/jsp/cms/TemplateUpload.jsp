@@ -51,14 +51,14 @@
 	<input type="hidden" id="action" value="templateSave" name="action"/>
 	
 		<div class="col-md-12">
-                <label class="control-label">Select Docx File</label>
+                <label class="control-label">Select DOCX File</label>
     			<input id="image" type="file" name="file_data"/>
         </div>
 	
 	
 	<bs:mco colsize="12">
 		<br>
-		<span><i> Currently Uploaded to : <br>${selectedTemplate.filename }</i></span>
+		<span><i> Download Template: <br><s:if test="selectedTemplate.filename != null && !selectedTemplate.filename.isEmpty() && selectedTemplate.saveInDB"><a href="downloadTemplate?id=${selectedTemplate.id}">${selectedTemplate.filename}</a></s:if><s:else>${selectedTemplate.filename}</s:else></i></span>
 	</bs:mco>
 	
 </form>

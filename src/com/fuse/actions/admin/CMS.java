@@ -1,16 +1,24 @@
 package com.fuse.actions.admin;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
 import org.apache.struts2.convention.annotation.Action;
 import org.apache.struts2.convention.annotation.Namespace;
 import org.apache.struts2.convention.annotation.Result;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 import org.apache.commons.codec.binary.Base64;
 
+import com.faction.reporting.ReportFeatures;
 import com.fuse.actions.FSActionSupport;
 import com.fuse.dao.AssessmentType;
 import com.fuse.dao.HibHelper;
@@ -18,6 +26,7 @@ import com.fuse.dao.Image;
 import com.fuse.dao.ReportOptions;
 import com.fuse.dao.ReportPage;
 import com.fuse.dao.ReportTemplates;
+import com.fuse.dao.SystemSettings;
 import com.fuse.dao.Teams;
 import com.fuse.utils.FSUtils;
 import com.fuse.utils.reporttemplate.ReportTemplate;
@@ -56,6 +65,10 @@ public class CMS extends FSActionSupport {
 	private String file_dataContentType;
 	private String file_dataFilename;
 	private String message;
+	private List<List<String>> reportSections = new ArrayList<>();
+	private String reportSection;
+	private InputStream templateStream;
+	private String downloadFilename;
 
 	@Action(value = "cms", results = {
 			@Result(name = "templateUpload", location = "/WEB-INF/jsp/cms/TemplateUpload.jsp"),
@@ -68,6 +81,15 @@ public class CMS extends FSActionSupport {
 		templates = em.createQuery("from ReportTemplates").getResultList();
 		teams = em.createQuery("from Teams").getResultList();
 		types = em.createQuery("from AssessmentType").getResultList();
+		if(ReportFeatures.allowSections()) {
+			SystemSettings ems = (SystemSettings) em.createQuery("from SystemSettings").getResultList().stream()
+					.findFirst().orElse(null);
+			String features = ems.getFeatures();
+			String[] sections = ReportFeatures.getFeatures(features);
+			for(String section : sections){
+				this.reportSections.add(Arrays.asList(new String[] {section, section.replaceAll("_", " ")}));
+			}
+		}
 
 		if (this.action != null && this.action.equals("updateCSS")) {
 			HibHelper.getInstance().preJoin();
@@ -161,6 +183,7 @@ public class CMS extends FSActionSupport {
 					selectedTemplate.setFilename(filename);
 					selectedTemplate.setBase64EncodedTemplate(b64Docx);
 					selectedTemplate.setSaveInDB(true);
+					
 				} else {
 					Teams team = (Teams) em.find(Teams.class, this.teamid);
 					AssessmentType type = (AssessmentType) em.find(AssessmentType.class, this.typeid);
@@ -201,6 +224,32 @@ public class CMS extends FSActionSupport {
 
 		return SUCCESS;
 	}
+	@Action(value = "downloadTemplate", results = {
+			@Result(
+					name = "download",
+					type = "stream",
+					params = {
+							"inputName", "templateStream",
+							"contentType", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+							"bufferSize", "1024",
+							"contentDisposition", "attachment;filename=\"${downloadFilename}\""
+					}
+			)
+	})
+	public String downloadTemplate() {
+		if (!(this.isAcadmin() || this.isAcengagement() || this.isAcassessor()))
+			return LOGIN;
+		if (id == null) return ERROR;
+		selectedTemplate = (ReportTemplates) em.createQuery("from ReportTemplates where id = :id")
+				.setParameter("id", id).getResultList().stream().findFirst().orElse(null);
+		if (selectedTemplate == null || !selectedTemplate.getSaveInDB()
+				|| selectedTemplate.getBase64EncodedTemplate() == null)
+			return ERROR;
+		templateStream = selectedTemplate.getTemplate();
+		downloadFilename = selectedTemplate.getFilename();
+		return "download";
+	}
+
 	@Action(value = "checkReportValues", results = {
 			@Result( name="ok", type = "httpheader", params = { "status", "202"} ),
 			@Result( name="none",type = "httpheader", params = { "status", "404"} ),
@@ -221,6 +270,102 @@ public class CMS extends FSActionSupport {
 			}else {
 				return "ok";
 			}
+		}catch(Exception ex) {
+			ex.printStackTrace();
+			return "none";
+		}
+	}
+	
+	@Action(value = "addReportSection", results = {
+			@Result( name="ok", type = "httpheader", params = { "status", "202"} ),
+			@Result( name="none",type = "httpheader", params = { "status", "404"} ),
+		}
+	)
+	public String addReportSection() {
+		if (!(this.isAcadmin() && ReportFeatures.allowSections()) )
+			return "none";
+		try {
+			SystemSettings ems = (SystemSettings) em.createQuery("from SystemSettings").getResultList().stream()
+					.findFirst().orElse(null);
+			if(ems == null) {
+				
+			}else {
+				String features = ems.getFeatures();
+				if(features == null) {
+					features = "{}";
+				}
+				List<String>sections = Arrays.asList(ReportFeatures.getFeatures(features));
+				if(sections.stream().anyMatch(section-> section.equals(this.reportSection))) {
+					return "ok";
+				}else {
+					JSONParser parser = new JSONParser();
+					JSONObject jsonObject = (JSONObject) parser.parse(features);
+					//clear array
+					jsonObject.put("reportSections", new JSONArray());
+					JSONArray jsonArray = (JSONArray) jsonObject.get("reportSections");
+					for(String section : sections) {
+						jsonArray.add(section);
+					}
+					this.reportSection = this.reportSection.replaceAll("[~!@#=\\[\\]\\\\{}|;':\"<>?,./$%^&*()+`]+", "");
+					this.reportSection = this.reportSection.replaceAll("[ \t]+", "_");
+					jsonArray.add(this.reportSection);
+					ems.setFeatures(jsonObject.toJSONString());
+					HibHelper.getInstance().preJoin();
+					em.joinTransaction();
+					em.persist(ems);
+					HibHelper.getInstance().commit();
+					return "ok";
+				}
+			}
+			
+			return "ok";
+		}catch(Exception ex) {
+			ex.printStackTrace();
+			return "none";
+		}
+	}
+	@Action(value = "deleteReportSection", results = {
+			@Result( name="ok", type = "httpheader", params = { "status", "202"} ),
+			@Result( name="none",type = "httpheader", params = { "status", "404"} ),
+		}
+	)
+	public String deleteReportSection() {
+		if (!(this.isAcadmin() && ReportFeatures.allowSections()) )
+			return "none";
+		try {
+			SystemSettings ems = (SystemSettings) em.createQuery("from SystemSettings").getResultList().stream()
+					.findFirst().orElse(null);
+			if(ems == null) {
+				
+			}else {
+				String features = ems.getFeatures();
+				if(features == null) {
+					features = "{}";
+				}
+				List<String>sections = Arrays.asList(ReportFeatures.getFeatures(features));
+				if(sections.stream().anyMatch(section-> section.equals(this.reportSection))) {
+					JSONParser parser = new JSONParser();
+					JSONObject jsonObject = (JSONObject) parser.parse(features);
+					//clear array
+					jsonObject.put("reportSections", new JSONArray());
+					JSONArray jsonArray = (JSONArray) jsonObject.get("reportSections");
+					for(String section : sections) {
+						if(!section.equals(this.reportSection)) {
+							jsonArray.add(section);
+						}
+					}
+					ems.setFeatures(jsonObject.toJSONString());
+					HibHelper.getInstance().preJoin();
+					em.joinTransaction();
+					em.persist(ems);
+					HibHelper.getInstance().commit();
+					return "ok";
+				}else {
+					return "ok";
+				}
+			}
+			
+			return "ok";
 		}catch(Exception ex) {
 			ex.printStackTrace();
 			return "none";
@@ -433,5 +578,23 @@ public class CMS extends FSActionSupport {
 		return message;
 	}
 	
+	public Boolean getSectionsEnabled() {
+		return ReportFeatures.allowSections();
+	}
+	
+	public List<List<String>> getReportSections() {
+		return this.reportSections;
+	}
+	public void setReportSection(String reportSection) {
+		this.reportSection = reportSection;
+	}
+
+	public InputStream getTemplateStream() {
+		return templateStream;
+	}
+
+	public String getDownloadFilename() {
+		return downloadFilename;
+	}
 
 }

@@ -2,6 +2,7 @@ package com.fuse.servlets;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Date;
 import java.util.List;
 
 import javax.persistence.EntityManager;
@@ -17,7 +18,9 @@ import com.fuse.dao.Assessment;
 import com.fuse.dao.ExploitStep;
 import com.fuse.dao.HibHelper;
 import com.fuse.dao.PeerReview;
+import com.fuse.dao.Permissions;
 import com.fuse.dao.User;
+import com.fuse.dao.query.AssessmentQueries;
 
 
 /**
@@ -53,9 +56,19 @@ public class getStatus extends HttpServlet {
 			EntityManager em = HibHelper.getInstance().getEMF().createEntityManager();
 			boolean isFirst=true;
 			try{
-				List<Assessment> assessments = (List<Assessment>)em.createNativeQuery("{\"assessor\" : "+user.getId() +", completed : { $exists : false}}", Assessment.class).getResultList();
+				
+				// Mirrors the assessment queue: when the queue is showing completed
+				// assessments their icons need report/peer-review state too. Users
+				// restricted to their own assessments never see completed ones.
+				boolean showCompleted = "true".equals(request.getParameter("showCompleted"))
+						&& user.getPermissions().getAccessLevel() != Permissions.AccessLevelUserOnly;
+
+				List<Assessment> assessments = AssessmentQueries.getAllAssessments(em, user,
+						showCompleted ? AssessmentQueries.All : AssessmentQueries.OnlyNonCompleted);
+				
 			
 				for(Assessment a : assessments){
+					
 					String json ="";
 					if(isFirst){
 						isFirst = false;

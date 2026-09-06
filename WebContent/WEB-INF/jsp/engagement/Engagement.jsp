@@ -4,14 +4,9 @@
 <%@ taglib prefix="s" uri="/struts-tags" %>
 <%@taglib prefix="bs" uri="/WEB-INF/BootStrapHandler.tld"%>
 <jsp:include page="../header.jsp" />
-   <link rel="stylesheet" href="../plugins/fullcalendar/fullcalendar.min.css">
-   <link rel="stylesheet" href="../plugins/fullcalendar/fullcalendar.print.css" media="print">
-   <link rel="stylesheet" href="../plugins/daterangepicker/daterangepicker-bs3.css">
    <link href="../fileupload/css/fileinput.min.css" media="all" rel="stylesheet" type="text/css" />
    <link href="../dist/css/jquery.autocomplete.css" media="all" rel="stylesheet" type="text/css" />
    <link href="../plugins/jquery-confirm/css/jquery-confirm.css" media="all" rel="stylesheet" type="text/css" />
-   	<link rel="stylesheet"
-	href="../plugins/gantt/css/style.css">
 	<link rel="stylesheet" href="../dist/css/Fuse.css">
 	
 <style>   
@@ -79,6 +74,7 @@ label{
      <!--  <li><a href="#tab_2" data-toggle="tab">Verifications</a></li>-->
      <li><a href="#tab_3" data-toggle="tab">Search</a></li>
      <li><a href="#tab_4" data-toggle="tab">Upload</a></li>
+     <jsp:include page="EngagementExtendedTabs.jsp" />
    </ul>
    <div class="tab-content">
      <div class="tab-pane active" id="tab_1">
@@ -93,6 +89,7 @@ label{
       <div class="tab-pane" id="tab_4">
 		<jsp:include page="assessmentUpload.jsp" />
      </div><!-- /.tab-pane -->
+     <jsp:include page="EngagementExtendedContent.jsp" />
    </div><!-- /.tab-content -->
  </div><!-- nav-tabs-custom -->
 </div><!-- /.col -->
@@ -114,11 +111,12 @@ label{
 	let customFields = []
 	let sDate= moment(new Date).format("MM-DD-YYYY")
 	let eDate= moment(new Date).format("MM-DD-YYYY")
-	let statName = "${defaultStatus}"
+	let statusSelect = "-1"
 	let engName = ''
 	let remName = ''
 	let campName =''
 	let assType = ''
+	let statusSelectName = 'Automatic';	
 	<s:iterator value="currentAssessment.CustomFields">
 		customFields.push(${type.id});
 	</s:iterator>

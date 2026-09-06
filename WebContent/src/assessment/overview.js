@@ -1,13 +1,10 @@
-require('suneditor/dist/css/suneditor.min.css');
 require('../scripts/fileupload/css/fileinput.css');
+require('select2/dist/css/select2.min.css')
 require('./overview.css');
 require('../loading/css/jquery-loading.css');
-import suneditor from 'suneditor';
-import colorPicker from 'suneditor/src/plugins/modules/_colorPicker';
-import plugins from 'suneditor/src/plugins';
-import CodeMirror from 'codemirror';
-import 'codemirror/mode/htmlmixed/htmlmixed';
-import 'codemirror/lib/codemirror.css';
+import Editor from '@toast-ui/editor'
+import codeSyntaxHighlight from '@toast-ui/editor-plugin-code-syntax-highlight'
+import colorSyntax from '@toast-ui/editor-plugin-color-syntax'
 import '../loading/js/jquery-loading';
 import 'jquery';
 import 'datatables.net';
@@ -18,141 +15,19 @@ import 'jquery-ui';
 import 'jquery-confirm';
 import '../scripts/jquery.autocomplete.min';
 import 'select2';
-import { marked } from 'marked';
 import Chart from 'chart.js/auto';
-import TurndownService from 'turndown'
-let html2md = new TurndownService()
+import {FactionEditor} from '../utils/editor';
 
 
 
 global._token = $("#_token")[0].value;
-var editors = {
-	risk: {},
-	summary: {},
-	notes: {}
-};
+let assessmentId = $("#assessmentId")[0].value
+console.log(assessmentId);
+let editors = new FactionEditor(assessmentId);
+let initialHTML={}
 
 
-plugins.table.createCells = function(nodeName, cnt, returnElement) {
-	nodeName = nodeName.toLowerCase();
 
-	if (!returnElement) {
-		let cellsHTML = '';
-		while (cnt > 0) {
-			cellsHTML += '<' + nodeName + '>&nbsp;</' + nodeName + '>';
-			cnt--;
-		}
-		return cellsHTML;
-	} else {
-		const cell = this.util.createElement(nodeName);
-		cell.innerHTML = '&nbsp;';
-		return cell;
-	}
-}
-
-global.editors = editors;
-let fromMarkdown = {
-	name: 'fromMarkdown',
-	display: 'command',
-	title: 'Convert Markdown',
-	buttonClass: '',
-	innerHTML: '<i class="fa-brands fa-markdown" style="color:lightgray"></i>',
-	add: function(core, targetElement) {
-		core.context.fromMarkdown = {
-			targetButton: targetElement,
-			preElement: null
-		}
-	},
-	active: function(element) {
-		if (element) {
-			this.util.addClass(this.context.fromMarkdown.targetButton.firstChild, 'mdEnabled');
-			this.context.fromMarkdown.preElement = element;
-			return true;
-		} else {
-			this.util.removeClass(this.context.fromMarkdown.targetButton.firstChild, 'mdEnabled');
-			this.context.fromMarkdown.preElement = null;
-		}
-		return false;
-	},
-	action: function() {
-		let selected = this.getSelectedElements();
-		const md = selected.reduce((acc, item) => acc + item.innerText + "\n", "");
-		const html = marked.parse(md);
-		const div = document.createElement("p");
-		div.innerHTML = html;
-		const parent = selected[0].parentNode;
-		parent.insertBefore(div, selected[0]);
-		for (let i = 0; i < selected.length; i++) {
-			selected[i].remove();
-		}
-		this.history.push(true)
-	}
-}
-plugins['fromMarkdown'] = fromMarkdown;
-let toMarkdown = {
-	name: 'toMarkdown',
-	display: 'command',
-	title: 'Convert To Markdown',
-	buttonClass: '',
-	innerHTML: '<i class="fa-brands fa-markdown" style="color:lightgray; transform: rotate(180deg);"></i>',
-	add: function(core, targetElement) {
-		core.context.toMarkdown = {
-			targetButton: targetElement,
-			preElement: null
-		}
-	},
-	active: function(element) {
-		if (element) {
-			this.util.addClass(this.context.toMarkdown.targetButton.firstChild, 'mdEnabled');
-			this.context.toMarkdown.preElement = element;
-			return true;
-		} else {
-			this.util.removeClass(this.context.toMarkdown.targetButton.firstChild, 'mdEnabled');
-			this.context.toMarkdown.preElement = null;
-		}
-		return false;
-	},
-	action: function() {
-		let selected = this.getSelectedElements();
-		const html = selected.reduce((acc, item) => acc + item.outerHTML + "", "");
-		const md = html2md.turndown(html);
-		const div = document.createElement("div");
-		div.innerHTML = `<pre>${md}</pre>`;
-		const parent = selected[0].parentNode;
-		parent.insertBefore(div, selected[0]);
-		for (let i = 0; i < selected.length; i++) {
-			selected[i].remove();
-		}
-	}
-}
-plugins['fromMarkdown'] = fromMarkdown;
-var editorOptions = {
-	codeMirror: CodeMirror,
-	plugins: plugins,
-	buttonList: [
-		['undo', 'redo', 'fontSize', 'formatBlock', 'textStyle'],
-		['bold', 'underline', 'italic', 'strike', 'subscript', 'superscript', 'removeFormat'],
-		['fontColor', 'hiliteColor', 'outdent', 'indent', 'align', 'horizontalRule', 'list', 'table'],
-		['link', 'image', 'fullScreen', 'showBlocks', 'fromMarkdown', 'codeView'],
-
-	],
-	defaultStyle: 'font-family: arial; font-size: 18px',
-	height: "auto",
-	minHeight: 500
-};
-let engagementOptions = {
-	defaultStyle: 'font-family: arial; font-size: 18px',
-	buttonList: [],
-	height: 500
-}
-
-function setEditorText_bk(id, data) {
-	if (typeof editors[id] == 'undefined') {
-		$('#' + id).html(data);
-	} else {
-		editors[id].setContents(data);
-	}
-}
 function alertMessage(resp, success) {
 	if (typeof resp.message == "undefined")
 		$.alert(
@@ -184,10 +59,6 @@ function alertMessage(resp, success) {
 	global._token = resp.token;
 }
 
-function getEditorText(name) {
-	let html = editors[name].getContents(true);
-	return Array.from($(html)).filter(a => a.innerHTML != "<br>").map(a => a.outerHTML).join("")
-}
 function showLoading(com) {
 	$(com).loading({ overlay: true, base: 0.3 });
 }
@@ -233,12 +104,10 @@ function saveAllEditors(showLoadingScreen = false) {
 	if (showLoadingScreen) {
 		showLoading(".content");
 	}
-	let risk = getEditorText('risk');
-	let sum = getEditorText('summary');
-	let notes = getEditorText('notes');
+	let risk = editors.getEditorText('risk');
+	let sum = editors.getEditorText('summary');
 	let data = "riskAnalysis=" + encodeURIComponent(risk);
 	data += "&summary=" + encodeURIComponent(sum);
-	data += "&notes=" + encodeURIComponent(notes);
 	data += "&id=app" + $("#appid")[0].value
 	data += "&update=true";
 	data += "&_token=" + global._token;
@@ -253,23 +122,27 @@ function saveAllEditors(showLoadingScreen = false) {
 			$.alert(resp.message);
 		}
 		global._token = resp.token;
-		$.get("ClearLock").done();
+		$.get("summary/clear/lock").done();
 	});
 
 }
 
 function saveEditor(type) {
 
-	let edits = getEditorText(type);
+	let edits = "";
+	if(type == "status"){
+		edits = $("#status").val();
+	}else{
+		edits = editors.getEditorText(type);
+	}
+	let name = "";
 	let data = "";
-	if (type == "notes") {
-		data += "notes=" + encodeURIComponent(edits);
-	}
-	else if (type == "risk") {
+	if (type == "risk") {
 		data += "riskAnalysis=" + encodeURIComponent(edits);
-	}
-	else if (type == "summary") {
+	}else if (type == "summary") {
 		data += "summary=" + encodeURIComponent(edits);
+	}else if(type =="status"){
+		data += "status=" + encodeURIComponent(edits);
 	}
 	data += "&id=app" + $("#appid")[0].value
 	data += "&update=true";
@@ -282,7 +155,7 @@ function saveEditor(type) {
 		global._token = resp.token;
 		clearTimeout(clearLockTimeout[type]);
 		clearLockTimeout[type] = setTimeout(() => {
-			$.get(`ClearLock?action=${type}`).done();
+			$.get(`summary/clear/lock?action=${type}`).done();
 		}, 5000);
 	});
 
@@ -290,7 +163,7 @@ function saveEditor(type) {
 let editorTimeout = {};
 let clearLockTimeout = {};
 function queueSave(type) {
-	$.get(`SetLock?action=${type}`).done((resp) => {
+	$.get(`summary/set/lock?action=${type}`).done((resp) => {
 		if (resp.result == "success") {
 			document.getElementById(`${type}_header`).innerHTML = "*"
 			clearTimeout(editorTimeout[type]);
@@ -302,68 +175,32 @@ function queueSave(type) {
 	});
 
 }
-function b64DecodeUnicode(str) {
-	str = decodeURIComponent(str);
-	return decodeURIComponent(Array.prototype.map.call(atob(str), function(c) {
-		return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-	}).join(''));
-}
-function setEditorContents(contents, editor, isEncoded) {
-	if (isEncoded) {
-		contents = b64DecodeUnicode(contents)
-	}
-	//This fixes issuen with images that makes it hard to edit
-	if (contents.endsWith("</div>") || contents.endsWith("</table>")) {
-		editors[editor].setContents(contents + "<p><br></p>");
-	}else{
-		editors[editor].setContents(contents);
-	}
-}
+
+
 $(function() {
+
 	global._token = $("#_token")[0].value;
-	editors.summary = suneditor.create("summary", {...editorOptions});
-	editors.summary.onInput = function(contents, core) {
-		queueSave("summary");
-	}
-	editors.summary.onChange = function(contents, core) {
+	editors.createEditor("summary",true, () => {
 		if (document.getElementById(`summary_header`).innerHTML == "") {
 			queueSave("summary");
 		}
-		if (!contents.endsWith("</p>")) {
-			editors.summary.setContents(contents + "<p><br></p>");
-		}
-	}
-
-	editors.risk = suneditor.create("riskAnalysis", {...editorOptions});
-	editors.risk.onInput = function(contents, core) {
-		queueSave("risk");
-	}
-	editors.risk.onChange = function(contents, core) {
-		//setEditorContents(contents, 'risk', false);
+	});
+	editors.createEditor("risk", true, () => {
 		if (document.getElementById(`risk_header`).innerHTML == "") {
 			queueSave("risk");
 		}
-		if (!contents.endsWith("</p>")) {
-			editors.risk.setContents(contents + "<p><br></p>");
+	});
+	$("#status").on('input', function(event){
+		if (document.getElementById(`status_header`).innerHTML == "") {
+			queueSave("status");
 		}
-	}
-	editors.notes = suneditor.create("notes", {...editorOptions});
-	editors.notes.onInput = function(contents, core) {
-		queueSave("notes");
-	}
-	editors.notes.onChange = function(contents, core) {
-		//setEditorContents(contents, 'notes', false);
-		if (document.getElementById(`notes_header`).innerHTML == "") {
-			queueSave("notes");
-		}
-		if (!contents.endsWith("</p>")) {
-			editors.notes.setContents(contents + "<p><br></p>");
-		}
-	}
-	suneditor.create("engagmentnotes", engagementOptions);
+		
+	})
+	let initialNotes = editors.entityDecode($("#engagementnotes").html());
+	editors.createReadOnly("engagementnotes", initialNotes);
 	let errorMessageShown=false;
 	setInterval(() => {
-		$.get("CheckLocks").done((resp) => {
+		$.get("summary/check/locks").done((resp) => {
 			if(resp.result && resp.result == "error"){
 				if(!errorMessageShown){
 					errorMessageShown=true
@@ -384,18 +221,18 @@ $(function() {
 			if(resp.token){
 				global._token = resp.token;	
 			}
-			["notes", "risk", "summary"].forEach(function(type) {
+			["risk", "summary"].forEach(function(type) {
 				if (resp[type] && resp[type].isLock) {
-					editors[type].core.context.element.wysiwygFrame.classList.add("disabled");
+					
+					$("#" + type).addClass("disabled")
+					
 					document.getElementById(`${type}_header`).innerHTML = `<i class="lockUser">Editing by ${resp[type].lockBy} ${resp[type].lockAt}</i>`
-					editors[type].disabled();
-					setEditorContents(resp[type].updatedText, type, true);
+					editors.setEditorContents(type, resp[type].updatedText, true);
 				} else {
-					editors[type].enable();
 					if (document.getElementById(`${type}_header`).innerHTML.indexOf("*") == -1) {
 						document.getElementById(`${type}_header`).innerHTML = "";
 					}
-					editors[type].core.context.element.wysiwygFrame.classList.remove("disabled");
+					$("#" + type).removeClass("disabled")
 				}
 			});
 		}
@@ -417,7 +254,6 @@ $(function() {
 		})
 
 	}, 1000);
-
 
 	$("#addList").click(function() {
 
@@ -507,10 +343,6 @@ $(function() {
 
 
 
-	$(".saveIt").click(function() {
-		saveAllEditors(true);
-
-	});
 });
 
 //<!-- Controls Section -->
@@ -520,20 +352,16 @@ $(function() {
 	$("#genreport").click(function() {
 		$("#genreport").html("<div class='throbber-loader'>Loading…</div>");
 		$(".reportLoading").loading({ overlay: true });
-		$.get("Assessment?action=genreport&id=" + $("#appid")[0].value, function(resp) {
+		$.get("GenReport?aid=" + $("#appid")[0].value, function(resp) {
 			global._token = resp.token;
 			clearInterval(checkStatus);
 			checkStatus = setInterval(function() {
-				$.get("CheckStatus").done(function(resp, _message, http) {
+				$.get(`CheckStatus?aid=${$("#appid")[0].value}`).done(function(resp, _message, http) {
 					if (http.status != 202) {
 						const updatedDate = resp.message;
 						$("#updatedDate").html(updatedDate);
 						clearInterval(checkStatus);
-						clearLoading($(".reportLoading")[0])
-						$("#genreport").html("Generate Report");
-						if (typeof $("#dlreport").attr('id') == 'undefined') {
-							location.reload();
-						}
+						location.reload();
 					}
 				});
 			}, 2000);
@@ -543,7 +371,7 @@ $(function() {
 	});
 	$("#dlreport").click(function() {
 		var id = $(this).attr("rpt");
-		var win = window.open('../service/Report.pdf?id=' + $("#appid")[0].value.replace("app", ""), '_blank');
+		var win = window.open('DownloadReport?aid=' + $("#appid")[0].value.replace("app", ""), '_blank');
 	});
 	$("#prsubmit").click(function() {
 		$(".content").loading({ overlay: true, base: 0.3 });
@@ -573,6 +401,47 @@ $(function() {
 
 		});
 	});
+	$("#uploadReportBtn").click(function() {
+		$('#uploadReportError').hide();
+		$('#uploadReportFile').val('');
+		$('#uploadReportModal').modal('show');
+	});
+
+	$("#doUploadReport").click(function() {
+		var file = $('#uploadReportFile')[0].files[0];
+		if (!file) {
+			$('#uploadReportError').text('Please select a file.').show();
+			return;
+		}
+		var ext = file.name.split('.').pop().toLowerCase();
+		if (ext !== 'docx' && ext !== 'pdf') {
+			$('#uploadReportError').text('Only .docx and .pdf files are allowed.').show();
+			return;
+		}
+		var formData = new FormData();
+		formData.append('uploadReport', file);
+		formData.append('_token', global._token);
+		$('#doUploadReport').prop('disabled', true).text('Uploading...');
+		$.ajax({
+			url: 'UploadFinalReport',
+			type: 'POST',
+			data: formData,
+			processData: false,
+			contentType: false,
+			success: function(resp) {
+				global._token = resp.token;
+				$('#uploadReportModal').modal('hide');
+				location.reload();
+			},
+			error: function(xhr) {
+				var msg = 'Upload failed.';
+				try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e) {}
+				$('#uploadReportError').text(msg).show();
+				$('#doUploadReport').prop('disabled', false).text('Upload');
+			}
+		});
+	});
+
 	$("#finalize").click(function() {
 		$(".content").loading({ overlay: true, base: 0.3 });
 		$.confirm({
@@ -616,19 +485,163 @@ $(function() {
 				cancel: function() { }
 			}
 		});
+	});
 
+	$("#reopen").click(function() {
+		$.confirm({
+			title: 'Are you sure?',
+			content: "Reopening this assessment will unfinalize it and return it to the assessment queue. Any closed vulnerabilities will be reopened.",
+			type: 'orange',
+			buttons: {
+				confirm: function() {
+					$(".content").loading({ overlay: true, base: 0.3 });
+					var data = "action=reopen";
+					data += "&id=" + $("#appid")[0].value.replace("app", "");
+					data += "&_token=" + global._token;
+					$.post("Assessment", data).done(function(resp) {
+						global._token = resp.token;
+						if (resp.result === "success") {
+							$.alert({
+								type: "green",
+								title: 'Success!',
+								content: "Assessment has been reopened",
+								buttons: {
+									ok: function() { location.reload(); }
+								}
+							});
+						} else {
+							$(".content").loading({ destroy: true });
+							var error = "";
+							if (typeof resp.errors == 'undefined')
+								error = "<br>" + resp.message;
+							else {
+								error = resp.errors;
+							}
+							$.alert({
+								type: "red",
+								title: 'Alert!',
+								content: error,
+							});
+						}
+					});
+				},
+				cancel: function() { }
+			}
+		});
 	});
 });
 
 //<!-- History section -->
 $(function() {
-	$('#history').DataTable({
+	var historyTableOpts = {
 		"paging": true,
 		"lengthChange": false,
 		"searching": true,
 		"ordering": true,
 		"info": true,
-		"autoWidth": true
+		"autoWidth": true,
+		"columnDefs": [{ "orderable": false, "targets": -1 }]
+	};
+	$('#openHistory').DataTable(historyTableOpts);
+	$('#closedHistory').DataTable(historyTableOpts);
+
+	// Recalculate column widths when a (sub)tab becomes visible so tables that
+	// were rendered while hidden lay out correctly.
+	$('a[data-toggle="tab"], a[data-toggle="pill"]').on('shown.bs.tab', function() {
+		$.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+	});
+
+	function markFindingAdded(btn) {
+		$(btn).closest('td').html('<span class="text-muted"><i class="fa fa-check"></i> Added</span>');
+	}
+
+	// Clone a single historical finding into the current assessment.
+	$(document).on('click', '.add-finding-btn', function() {
+		var btn = this;
+		var vulnid = $(btn).data('vulnid');
+		var data = "id=" + assessmentId;
+		data += "&vulnid=" + vulnid;
+		data += "&_token=" + global._token;
+		$(btn).prop('disabled', true);
+		$.post("AddHistoryFinding", data).done(function(resp) {
+			global._token = resp.token;
+			if (typeof resp.message == "undefined") {
+				markFindingAdded(btn);
+				alertMessage(resp, "Finding added to this assessment.");
+			} else {
+				$(btn).prop('disabled', false);
+				alertMessage(resp);
+			}
+		});
+	});
+
+	// Clone every open finding from prior assessments into the current one.
+	$("#addOpenFindings").click(function() {
+		$.confirm({
+			title: "Add Open Findings",
+			content: "Clone all open findings from previous assessments into this assessment?",
+			type: "blue",
+			columnClass: 'small',
+			buttons: {
+				confirm: function() {
+					var data = "id=" + assessmentId;
+					data += "&_token=" + global._token;
+					$.post("AddHistoryFinding", data).done(function(resp) {
+						global._token = resp.token;
+						if (typeof resp.message == "undefined") {
+							$("#openHistory").find(".add-finding-btn").each(function(i, b) {
+								markFindingAdded(b);
+							});
+							alertMessage(resp, "Open findings added to this assessment.");
+						} else {
+							alertMessage(resp);
+						}
+					});
+				},
+				cancel: function() {}
+			}
+		});
+	});
+
+	// Move the detail panel to <body> so position:fixed is relative to the
+	// viewport regardless of any transformed ancestor.
+	$("#vulnDetailPanel, #vulnDetailOverlay").appendTo("body");
+
+	function openVulnDetail(vulnid) {
+		$("#vulnDetailBody").html('<div style="text-align:center;padding:40px;"><i class="fa fa-spinner fa-spin fa-2x"></i></div>');
+		$("#vulnDetailOverlay").show();
+		$("#vulnDetailPanel").addClass("open");
+		$.get("HistoryVulnDetail", "vulnid=" + vulnid).done(function(resp) {
+			if (resp && typeof resp == "object") {
+				if (resp.token) global._token = resp.token;
+				$("#vulnDetailBody").html('<div class="alert alert-danger">' + (resp.message || "Unable to load finding details.") + '</div>');
+			} else {
+				$("#vulnDetailBody").html(resp);
+			}
+		}).fail(function() {
+			$("#vulnDetailBody").html('<div class="alert alert-danger">Failed to load finding details.</div>');
+		});
+	}
+
+	function closeVulnDetail() {
+		$("#vulnDetailPanel").removeClass("open");
+		$("#vulnDetailOverlay").hide();
+	}
+
+	// Clicking a history row opens the detail panel, but not when the click lands
+	// on the Add button or a link inside the row.
+	$(document).on("click", ".history-row", function(e) {
+		if ($(e.target).closest(".add-finding-btn, a").length)
+			return;
+		var vulnid = $(this).data("vulnid");
+		if (vulnid)
+			openVulnDetail(vulnid);
+	});
+
+	$(document).on("click", "#vulnDetailClose, #vulnDetailOverlay", closeVulnDetail);
+	$(document).on("keydown", function(e) {
+		if (e.key === "Escape")
+			closeVulnDetail();
 	});
 
 	var colors = ["#8E44AD", "#9B59B6", "#2C3E50", "#34495E", "#95A5A6", "#00a65a", "#39cccc", "#00c0ef", "#f39c12", "#dd4b39"];
@@ -652,18 +665,23 @@ $(function() {
 	});
 
 	$("#openICS").click(function() {
-		document.getElementById('dlFrame').src = `Assessment?action=ics&id=${id}`;
-	})
+		$.get(`Assessment?action=ics&id=${id}`).done( resp => {
+			alertMessage(resp , "Invite Sent To Your Email")
+		});
+	});
+	$("#downloadICS").click(function() {
+		document.getElementById('dlFrame').src = `DownloadICS?id=${id}`;
+	});
 
 });
 
-//  <!-- Template Search and Save -->
+//  <!-- Template and Notes Search and Save -->
 $(function() {
 	$.ajaxSetup({ cache: false });
 	$(".saveTemp").click(function() {
 		var id = $(this).attr("for");
 		var data = "term=" + $("#" + id).val();
-		data += "&summary=" + encodeURIComponent(getEditorText($("#" + id).attr("for")));
+		data += "&summary=" + encodeURIComponent(editors.getEditorText($("#" + id).attr("for")));
 		if ($("#" + id).attr("for") == "step_description")
 			data += "&exploit=true";
 		data += "&_token=" + global._token;
@@ -705,7 +723,7 @@ $(function() {
 					selectedText = $("#tempName").val();
 				}
 				let data = `term=${selectedText.trim()}`
-				data += "&summary=" + encodeURIComponent(getEditorText(type));
+				data += "&summary=" + encodeURIComponent(editors.getEditorText(type));
 				data += `&type=${type}`;
 				data += "&active=true"
 				data += "&_token=" + global._token;
@@ -720,6 +738,9 @@ $(function() {
 						$(option).val(template.tmpId);
 						$(option).html(template.title);
 						$(`#${type}Templates`).append(option).trigger("change");
+						$(option).on("dblclick", async (event)=>{
+							await setUpListEvents(event)
+						})
 					}
 					alertMessage(resp, "Template Updated.");
 				});
@@ -740,7 +761,7 @@ $(function() {
 		} else if (selectedText.length == 0) {
 			contentMessage = "Enter a Template name: <input id='tempName' class='form-control'></input>";
 		} else {
-			contentMessage = "Do you want to save the template <b>" + selectedText + "</b> or create a new template?<input id='updateTemplateName' type='hidden' value=" + selectedText + "'/>";
+			contentMessage = "Do you want to save the template <b>" + selectedText + "</b> or create a new template?<input id='updateTemplateName' type='hidden' value='" + selectedText + "'/>";
 			buttons["new"] = function() {
 				$(`#${type}Templates`).val(null).trigger('change');
 				let saveButtons = $(".saveTemplate")
@@ -757,13 +778,16 @@ $(function() {
 			}
 		}
 		$.confirm({
-			title: "Save Template",
+			title: "Create Template",
 			content: contentMessage,
 			buttons: buttons
 
 		})
 
 	});
+	
+	
+	
 	$(".deleteTemplate").on('click', async (event) => {
 		let type = $(event.currentTarget).attr("for")
 		let selected = Array.from($(`#${type}Templates option:selected`)).filter((t) => $(t).attr("global") != "true");
@@ -794,7 +818,7 @@ $(function() {
 			}
 		});
 	});
-	$(".globalTemplate, .userTemplate").on("dblclick", async (event)=>{
+	async function setUpListEvents(event) {
 		let id = event.target.parentElement.id
 		let value = event.target.value;
 		let type = "summary";
@@ -804,9 +828,13 @@ $(function() {
 		await $.get('tempSearchDetail?tmpId=' + value)
 			.done(function(data) {
 				let template = data.templates[0].text;
-				let text = getEditorText(type) + "\n" + template;
-				setEditorContents(text, type, false);
+				let text = editors.getEditorText(type) + "\n\n" + template;
+				editors.setEditorContents(type, text, false);
 			});
+		
+	}
+	$(".globalTemplate, .userTemplate").on("dblclick", async (event)=>{
+		await setUpListEvents(event)
 	})
 	
 	$(".addTemplate").on('click', async (event) => {
@@ -819,7 +847,7 @@ $(function() {
 					textData.push(data.templates[0].text);
 				});
 		}
-		let text = textData.join("\n");
+		let text = textData.join("\n\n");
 		$.confirm({
 			title: "Confirm?",
 			content: "Are you sure you want to Overwrite, Append, or Prepend the current text?",
@@ -827,21 +855,21 @@ $(function() {
 				overWrite: {
 					text: "OverWrite",
 					action: function() {
-						setEditorContents(text, type, false);
+						editors.setEditorContents(type, text, false);
 					}
 				},
 				prepend: {
 					text: "Prepend",
 					action: function() {
-						text = text + "\n" + getEditorText(type);
-						setEditorContents(text, type, false);
+						text = text + "\n\n" + editors.getEditorText(type);
+						editors.setEditorContents(type, text, false);
 					}
 				},
 				append: {
 					text: "Append",
 					action: function() {
-						text = getEditorText(type) + "\n" + text;
-						setEditorContents(text, type, false);
+						text = editors.getEditorText(type) + "\n\n" + text;
+						editors.setEditorContents(type, text, false);
 					}
 				},
 				cancel: function() {
@@ -877,7 +905,7 @@ $(function() {
 				);
 			},
 			onSelect: function(e, term, item) {
-				var s = getEditorText($(el).attr("for"));
+				var s = editors.getEditorText($(el).attr("for"));
 				var tmpId = term.split(":")[0];
 				$(el).val(term.split(":")[1].trim());
 				$(el).attr("tmpId", tmpId);
@@ -894,7 +922,7 @@ $(function() {
 										.done(function(data) {
 											let type = $(el).attr("for");
 											let text = data.templates[0].text;
-											setEditorContents(text, type, false);
+											editors.setEditorContents(type, text, false);
 										});
 								}
 
@@ -904,9 +932,9 @@ $(function() {
 								action: function() {
 									$.get('tempSearchDetail?tmpId=' + tmpId)
 										.done(function(data) {
-											var text = "<br />" + getEditorText($(el).attr("for"));
+											var text = "<br />" + editors.getEditorText($(el).attr("for"));
 											let type = $(el).attr("for");
-											setEditorContents(text, type, false);
+											editors.setEditorContents(type, text, false);
 										});
 								}
 
@@ -916,9 +944,9 @@ $(function() {
 								action: function() {
 									$.get('tempSearchDetail?tmpId=' + tmpId)
 										.done(function(data) {
-											var text = getEditorText($(el).attr("for")) + "<br />";
+											var text = editors.getEditorText($(el).attr("for")) + "<br />";
 											let type = $(el).attr("for");
-											setEditorContents(text, type, false);
+											editors.setEditorContents(type, text, false);
 										});
 								}
 
@@ -935,7 +963,7 @@ $(function() {
 						.done(function(data) {
 							let type = $(el).attr("for");
 							let text = data.templates[0].text;
-							setEditorContents(text, type, false);
+							editors.setEditorContents(type, text, false);
 						});
 				}
 
@@ -961,23 +989,39 @@ $(function() {
 });
 $(function() {
 	$(".select2").select2();
-	$(".updateCF").click(function() {
-		let cfid = $(this).attr("for");
-		let el = $("#cust" + cfid);
+	$('[id^="cust"]').each((_index, el) => $(el).on('input', function (event) {
+		let val = "";
+		if (this.type == 'checkbox') {
+			val = $(this).is(":checked");
+		} else {
+			val = $(this).val();
+		}
+		updateCustom(this.id);
+	}));
+	let pendingUpdate={}
+	
+	function updateCustom(cfid){
+		let el = $(`#${cfid}`);
+		$(`#${cfid}_header`).html("*");
 		let val = "";
 		if (el[0].type == 'checkbox') {
 			val = $(el).is(":checked");
 		} else {
 			val = $(el).val();
 		}
-		let data = `cfid=${cfid}`;
+		let data = `cfid=${cfid.replace("cust","")}`;
 		data += `&id=${id}`;
 		data += `&cfValue=${val}`;
 		data += "&_token=" + global._token;
-		$.post("UpdateAsmtCF", data).done(function(resp) {
-			alertMessage(resp, "Parameter Updated.");
-		});
-	});
+		clearTimeout(pendingUpdate[cfid]);
+		pendingUpdate[cfid] = setTimeout( () =>{
+			$.post("UpdateAsmtCF", data).done(function(resp) {
+				$(`#${cfid}_header`).html("");
+				
+				console.log("Updated");
+			});
+		}, 1000);
+	}
 
 });
 $(function() {
@@ -1001,10 +1045,10 @@ $(function() {
 		$('.nav-tabs a[href="' + location.hash + '"]').tab('show');
 	}
 	$("a").click(evt => {
-		if (evt.target.href.indexOf("tab_3") != -1) {
-			location.href = "#tab_3"
-		} else if (evt.target.href.indexOf("tab_1") != -1) {
-			location.href = "#tab_1"
+		if (evt.target.href.indexOf("#") != -1) {
+			console.log("Here")
+			location.href = evt.target.href
 		}
+		
 	})
 });

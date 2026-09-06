@@ -12,6 +12,7 @@ import java.util.List;
 import org.apache.struts2.convention.annotation.Action;
 import org.apache.struts2.convention.annotation.Namespace;
 import org.apache.struts2.convention.annotation.Result;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import com.fuse.dao.APIKeys;
 import com.fuse.dao.AuditLog;
@@ -41,9 +42,8 @@ public class Profile extends FSActionSupport{
 	private String contentType;
     private String filename;
     private String apiKey;
+    private String copilotToken;
 
-    
-    
     @Action(value="DeleteProfileImage", results={
 			@Result(name="uploadedJson",location="/WEB-INF/jsp/profile/uploadedJson.jsp")
 		})
@@ -148,8 +148,10 @@ public class Profile extends FSActionSupport{
 			}
 			
 		}else if(this.action.equals("update")){
+			BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 			//Check the current password before making changes.
-			if(AccessControl.HashPass(this.user.getUsername(), this.current).equals(this.user.getPasshash())){
+			
+			if(encoder.matches(this.current, this.user.getPasshash())) {
 				if(this.email == null || this.email.trim().equals("")) {
 					this._message="Email is missing.";
 					return this.ERRORJSON;
@@ -180,7 +182,7 @@ public class Profile extends FSActionSupport{
 				if(!this.confirm.equals("")){ // we are updating the password too.
 					message = AccessControl.checkPassword(password, confirm);
 					if(message.equals("")){
-						this.user.setPasshash(AccessControl.HashPass(user.getUsername(), password));
+						this.user.setPasshash(AccessControl.HashPass(password));
 					}else{
 						return "errorJson";
 					}	
@@ -292,8 +294,43 @@ public class Profile extends FSActionSupport{
 	public String getApiKey() {
 		return apiKey;
 	}
-	
-	
-	
+
+	@Action(value = "SaveCopilotToken", results = {
+		@Result(name = "successJson", location = "/WEB-INF/jsp/successJson.jsp"),
+		@Result(name = "errorJson", location = "/WEB-INF/jsp/errorJson.jsp")
+	})
+	public String saveCopilotToken() {
+		user = this.getSessionUser();
+		if (user == null) {
+			return LOGIN;
+		}
+		if (!this.testToken(false)) {
+			return this.ERRORJSON;
+		}
+
+		HibHelper.getInstance().preJoin();
+		em.joinTransaction();
+		User dbUser = em.find(User.class, user.getId());
+		dbUser.setCopilotToken(this.copilotToken != null ? this.copilotToken.trim() : "");
+		em.merge(dbUser);
+		HibHelper.getInstance().commit();
+
+		// Keep session user in sync
+		user.setCopilotToken(this.copilotToken != null ? this.copilotToken.trim() : "");
+		this.JSESSION.put("user", user);
+
+		AuditLog.audit(this, "User updated their GitHub Copilot token", AuditLog.Login, false);
+
+		this._message = "GitHub Copilot token saved";
+		return this.SUCCESSJSON;
+	}
+
+	public String getCopilotToken() {
+		return copilotToken;
+	}
+
+	public void setCopilotToken(String copilotToken) {
+		this.copilotToken = copilotToken;
+	}
 
 }

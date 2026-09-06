@@ -1,6 +1,8 @@
 package com.fuse.dao.query;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -14,11 +16,13 @@ import com.fuse.dao.Campaign;
 import com.fuse.dao.Comment;
 import com.fuse.dao.Files;
 import com.fuse.dao.HibHelper;
+import com.fuse.dao.Image;
 import com.fuse.dao.PeerReview;
 import com.fuse.dao.Permissions;
 import com.fuse.dao.ReportTemplates;
 import com.fuse.dao.Teams;
 import com.fuse.dao.User;
+import com.fuse.dao.Vulnerability;
 import com.fuse.utils.FSUtils;
 
 public class AssessmentQueries {
@@ -26,7 +30,27 @@ public class AssessmentQueries {
 	public static int OnlyCompleted = 0;
 	public static int OnlyNonCompleted = 1;
 	public static int All = 2;
-	
+
+	/** Number of days a finalized assessment stays in the assessment queue. */
+	public static final int FINALIZED_QUEUE_RETENTION_DAYS = 30;
+
+	/**
+	 * Builds a MongoDB $or clause that matches assessments that are either
+	 * not yet completed OR were completed within the last
+	 * {@link #FINALIZED_QUEUE_RETENTION_DAYS} days. This keeps recently
+	 * finalized assessments visible in the queue for a grace period.
+	 */
+	private static String nonCompletedOrRecentlyFinalized() {
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+		Date cutoff = new Date(System.currentTimeMillis()
+				- (long) FINALIZED_QUEUE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+		String cutoffStr = sdf.format(cutoff);
+		return "\"$or\" : ["
+				+ " {\"completed\" : {\"$exists\": false}},"
+				+ " {\"completed\" : {\"$gte\": ISODate(\"" + cutoffStr + "\")}}"
+				+ "] ";
+	}
+
 	public static List<Assessment> getAllAssessmentsbk(EntityManager em, User user, int assessmentType){
 		String query = "db.Assessment.aggregate("
 				+ "["
@@ -36,6 +60,7 @@ public class AssessmentQueries {
 		if(!user.getPermissions().isManager() || user.getPermissions().getAccessLevel() == Permissions.AccessLevelUserOnly) {
 			query += "'assessor' : "+user.getId() + "," ;
 		}
+		
 		
 		if(user.getPermissions().getAccessLevel() == Permissions.AccessLevelTeamOnly) {
 			query+="'users.team_id': " + user.getTeam().getId() + " , ";
@@ -55,21 +80,64 @@ public class AssessmentQueries {
 	public static Assessment getAssessmentById(EntityManager em, Long id) {
 		return em.find(Assessment.class, id);
 	}
+	
 	public static List<Assessment>getAllAssessments(EntityManager em, User user, int assessmentType ){
-		
- 		String query = "db.Assessment.find({ \"$query\" : {";
+
+		// Clauses are joined rather than concatenated so that All (which adds no
+		// completed clause) doesn't leave a dangling comma in the query document.
+		List<String> clauses = new ArrayList<String>();
 		if(!user.getPermissions().isManager() || user.getPermissions().getAccessLevel() == Permissions.AccessLevelUserOnly) {
+			clauses.add("\"assessor\" : " + user.getId());
+		}
+
+
+		if(assessmentType == OnlyNonCompleted)
+			clauses.add(nonCompletedOrRecentlyFinalized());
+		else if(assessmentType == OnlyCompleted)
+			clauses.add("\"completed\" : {\"$exists\": true}");
+
+
+		String query = "db.Assessment.find({ \"$query\" : {" + String.join(", ", clauses)
+				+ "}, \"$orderby\": { \"start\" : 1 }})";
+		List<Assessment> assessments = (List<Assessment>)em.createNativeQuery(
+				query, Assessment.class).getResultList();
+		
+		if(user.getPermissions().getAccessLevel() == Permissions.AccessLevelTeamOnly)
+			return (List<Assessment>)assessments.stream().filter(
+					a -> hasTeam(user,a) 
+					).collect(Collectors.toList()); 
+		else 
+			return assessments;
+		
+	}
+	
+	public static List<Assessment>getAllCompletedAssessmentsByDateRange(EntityManager em, User user, Date start, Date end){
+
+		// UserOnly users may only access their own assessments while open — no completed access at all
+		if(user.getPermissions().getAccessLevel() == Permissions.AccessLevelUserOnly) {
+			return new ArrayList();
+		}
+
+ 		String query = "db.Assessment.find({";
+		if(!user.getPermissions().isManager()) {
 			query += "\"assessor\" : "+user.getId() + "," ;
 		}
 		
 		
-		if(assessmentType == OnlyNonCompleted)
-			query += "\"completed\" : {\"$exists\": false}  ";
-		else if(assessmentType == OnlyCompleted)
-			query += "\"completed\" : {\"$exists\": true}  ";
+		if(start == null) {
+			return new ArrayList();
+		}
+		if(end == null) {
+			end = new Date();
+		}
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+		String startStr = sdf.format(start);
+		String endStr = sdf.format(end);
+		
+		query += " \"completed\":{ \"$exists\": true, \"$gte\":ISODate(\""+ startStr +"\"), \"$lt\":ISODate(\"" +endStr +"\") }";
 		
 		
-		query +="}, \"$orderby\": { \"start\" : 1 }})";
+		query +="})";
 		List<Assessment> assessments = (List<Assessment>)em.createNativeQuery(
 				query, Assessment.class).getResultList();
 		
@@ -87,7 +155,7 @@ public class AssessmentQueries {
 	public static List<Assessment>getAssessmentsByCampaign(EntityManager em, User user, Long CampId, int assessmentType){
 		
 		String query = "db.Assessment.find({ \"$query\" : {";
-		if(!user.getPermissions().isManager() || user.getPermissions().getAccessLevel() == Permissions.AccessLevelUserOnly) {
+		if(!user.getPermissions().isManager() && user.getPermissions().getAccessLevel() == Permissions.AccessLevelUserOnly) {
 			query += "\"assessor\" : "+user.getId() + "," ;
 		}
 		
@@ -96,7 +164,7 @@ public class AssessmentQueries {
 		query += "\"campaign_id\" : " + CampId +",";
 		
 		if(assessmentType == OnlyNonCompleted)
-			query += "\"completed\" : {\"$exists\": false}  ";
+			query += nonCompletedOrRecentlyFinalized();
 		else if(assessmentType == OnlyCompleted)
 			query += "\"completed\" : {\"$exists\": true}  ";
 		
@@ -127,7 +195,7 @@ public class AssessmentQueries {
 		
 	
 		if(assessmentType == OnlyNonCompleted)
-			query += "\"completed\" : {\"$exists\": false}} , ";
+			query += nonCompletedOrRecentlyFinalized() + "} , ";
 		
 		else if(assessmentType == OnlyCompleted)
 			query += "\"completed\" : {\"$exists\": true}} , ";
@@ -182,7 +250,7 @@ public class AssessmentQueries {
 		
 	
 		if(assessmentType == OnlyNonCompleted)
-			query += "\"completed\" : {\"$exists\": false} , ";
+			query += nonCompletedOrRecentlyFinalized() + " , ";
 		else if(assessmentType == OnlyCompleted)
 			query += "\"completed\" : {\"$exists\": true} , ";
 		
@@ -208,20 +276,40 @@ public class AssessmentQueries {
 			return assessments;
 		
 	}
+	public static boolean canAccessAssessment(User user, Assessment asmt) {
+		if(asmt == null)
+			return false;
+		// User has team only and assessment not in team
+		if(user.getPermissions().getAccessLevel() == Permissions.AccessLevelTeamOnly) {
+			if(!hasTeam(user,asmt))
+				return false;
+		}
+		// User can only access their own assessments, and only while open
+		if(user.getPermissions().getAccessLevel() == Permissions.AccessLevelUserOnly) {
+			if(!asmt.getAssessor().stream().anyMatch(u -> u.getId() == user.getId())) {
+				return false;
+			}
+			if(asmt.getCompleted() != null) {
+				return false;
+			}
+		}
+		
+		//Users allowed to access
+		if(user.getPermissions().isEngagement() || user.getPermissions().isManager() || user.getPermissions().isAssessor() || user.getPermissions().isRemediation()) {
+			return true;
+		}
+		
+		
+		return false;
+		
+	}
 	
 	public static Assessment getAssessment(EntityManager em, User user, Long AssessmentId) {
 		Assessment asmt = em.find(Assessment.class, AssessmentId);
-		if(!user.getPermissions().isManager() || user.getPermissions().getAccessLevel() == Permissions.AccessLevelUserOnly) {
-			if(!asmt.getAssessor().stream().anyMatch(u -> u.getId() == user.getId())) {
-				return null;
-			}
+		if(canAccessAssessment(user, asmt)) {
+			return asmt;
 		}
-		if(user.getPermissions().getAccessLevel() == Permissions.AccessLevelTeamOnly) {
-			if(!hasTeam(user,asmt))
-				return null;
-		}
-		
-		return asmt;
+		return null;
 		
 	}
 	
@@ -264,13 +352,17 @@ public class AssessmentQueries {
 			.setParameter("id",id).getResultList();
 	}
 	public static boolean checkForReportTemplates(EntityManager em, Assessment assessment){
+		return checkForReportTemplates(em, assessment, false);
+	}
+	public static boolean checkForReportTemplates(EntityManager em, Assessment assessment, Boolean retest){
 		List<ReportTemplates> templates = em.createQuery("from ReportTemplates").getResultList();
 		boolean found=false;
 		for(ReportTemplates template : templates){
 			//TODO: fix lazy loading issue
 			try {
 				if(template.getType().getId() == assessment.getType().getId() &&
-						template.getTeam().getId() == assessment.getAssessor().get(0).getTeam().getId()) {
+						template.getTeam().getId() == assessment.getAssessor().get(0).getTeam().getId() &&
+						template.isRetest() == retest) {
 					found = true;
 				}
 			}catch(Exception ex) {
@@ -313,15 +405,83 @@ public class AssessmentQueries {
 	
 	
 	
-	private static boolean hasTeam(User user, Assessment asmt) {
-		boolean hasTeam = false;
+	public static boolean hasTeam(User user, Assessment asmt) {
 		if(asmt == null || asmt.getAssessor().size() == 0)
 			return false;
-		for(User u : asmt.getAssessor()) {
-			if(u.getTeam().getId().longValue() == user.getTeam().getId().longValue())
-				hasTeam = true;
+		if(asmt.getAssessor() == null || asmt.getAssessor().size() == 0) {
+			return false;
 		}
-		return hasTeam;
+		Long asmtTeam = asmt.getAssessor().get(0).getTeam().getId();
+		return user.getTeam().getId().equals(asmtTeam);
+	}
+	
+	public static String replaceImageLinks(Assessment asmt, String text) {
+		if(text == null) {
+			return "";
+		}
+		
+		Long aid= asmt.getId();
+		String matchPrefix = "getImage\\?id(=|&#61;)" + aid + ":";
+		for(Image img : asmt.getImages()) {
+			String matchStr = matchPrefix + img.getGuid();
+			text = text.replaceAll( matchStr, img.getBase64Image());
+		}
+		
+		return text;
+		
+	}
+	public static void updateImages(Assessment asmt, Vulnerability v) {
+		v.setDescription(
+				replaceImageLinks(asmt, v.getDescription())
+				);
+		v.setRecommendation(
+				replaceImageLinks(asmt, v.getRecommendation())
+				);
+		v.setDetails(
+				replaceImageLinks(asmt, v.getDetails())
+		);
+	}
+	public static void updateImages(EntityManager em, Vulnerability v) {
+		Assessment asmt = getAssessmentById(em, v.getAssessmentId());
+		updateImages(asmt,v);
+	}
+	public static void updateImages(Assessment asmt) {
+		asmt.setSummary(
+				replaceImageLinks(asmt, asmt.getSummary())
+				);
+		asmt.setRiskAnalysis(
+				replaceImageLinks(asmt, asmt.getRiskAnalysis())
+				);
+	}
+	
+	public static void removeImages(Assessment assessment) {
+		List<Image>removeImages = new ArrayList<>();
+		for(Image image : assessment.getImages()) {
+			boolean found = false;
+			String guid = image.getGuid();
+			if(assessment.getSummary() != null && assessment.getSummary().contains(guid)) {
+				found = true;
+			}else if(assessment.getRiskAnalysis() != null && assessment.getRiskAnalysis().contains(guid)) {
+				found = true;
+			}else {
+				for(Vulnerability vuln: assessment.getVulns()) {
+					if(vuln.getDescription() != null && vuln.getDescription().contains(guid)) {
+						found = true;
+					}else if(vuln.getRecommendation() != null && vuln.getRecommendation().contains(guid)) {
+						found = true;
+					}else if(vuln.getDetails() != null && vuln.getDetails().contains(guid)) {
+						found = true;
+					}
+				}
+			}
+			if(!found) {
+				removeImages.add(image);
+			}
+		}
+		for(Image removed : removeImages) {
+			assessment.getImages().remove(removed);
+		}
+		
 	}
 
 }

@@ -1,3 +1,5 @@
+
+require('select2/dist/css/select2.min.css')
 import 'jquery';
 import 'datatables.net';
 import 'datatables.net-bs';
@@ -80,7 +82,6 @@ global.edit = function edit(id) {
 	$.post("GetUser", pdata, function(data) {
 		console.log(data)
 		$("#uname").val(data.username);
-		$("#uname").attr("disabled", "true");
 		if(data.authMethod != "Native"){
 			$("#fname").attr("disabled", "true");
 			$("#lname").attr("disabled", "true");
@@ -170,7 +171,7 @@ global.edit = function edit(id) {
 		$("#saveUser").on('click', function() {
 			pdata = permissionString();
 			pdata += "&userId=" + selectedUser;
-			//pdata +="&uname=" +  $("#uname").val();
+			pdata += "&username=" +  $("#uname").val();
 			pdata += "&fname=" + $("#fname").val();
 			pdata += "&lname=" + $("#lname").val();
 			pdata += "&email=" + encodeURIComponent($("#email").val());
@@ -180,10 +181,20 @@ global.edit = function edit(id) {
 			pdata += "&accesscontrol=" + $('input:radio[name=accesslevel]:checked').val();
 			pdata += "&update=true";
 			pdata += "&_token=" + _token;
-			$.post("UpdateUser", pdata, function(resp) {
-				global._token = resp.token;
-				$('#userModal').modal('hide');
-				alertRedirect(resp);
+			$.post("UpdateUser", pdata, function(data) {
+				global._token = data.token;
+				if (data.result == "success") {
+					$('#userModal').modal('hide');
+					alertRedirect(data);
+				} else {
+					$.confirm({
+						title: "Error",
+						content: data.message,
+						buttons: {
+							"OK": function() { return; }
+						}
+					});
+				}
 			});
 		});
 	}).fail(function(data) { console.log(data); });
@@ -300,6 +311,63 @@ $(function() {
 			global._token = data.token;
 			if (data.result == "success") {
 				$.alert("OAUTH Settings Saved");
+			} else {
+				$.confirm({
+					title: "Error",
+					content: data.message,
+					buttons: {
+						"OK": function() { return; }
+					}
+				});
+			}
+		});
+
+	});
+
+	function githubSave(callback){
+		let pdata = "githubClientId=" + $("#githubClientId").val();
+		pdata += "&githubClientSecret=" + $("#githubClientSecret").val();
+		pdata += "&githubEnterpriseUrl=" + encodeURIComponent($("#githubEnterpriseUrl").val());
+		pdata += "&_token=" + global._token;
+		$.post("SaveGithub", pdata, function(data) {
+			global._token = data.token;
+			callback(data)
+		});
+
+	}
+	$("#githubSave").on('click', function() {
+		githubSave( (data) => {
+			global._token = data.token;
+			if (data.result == "success") {
+				$.alert("GitHub Settings Saved");
+			} else {
+				$.confirm({
+					title: "Error",
+					content: data.message,
+					buttons: {
+						"OK": function() { return; }
+					}
+				});
+			}
+		});
+
+	});
+	function saml2Save(callback){
+		let pdata = "saml2MetaUrl=" + $("#saml2MetaUrl").val();
+		pdata += "&samlForceAuthn=" + $("#samlForceAuthn").is(':checked');
+		pdata += "&samlMaxAuthLifetime=" + $("#samlMaxAuthLifetime").val();
+		pdata += "&_token=" + global._token;
+		$.post("SaveSAML2", pdata, function(data) {
+			global._token = data.token;
+			callback(data)
+		});
+		
+	}
+	$("#saml2Save").on('click', function() {
+		saml2Save( (data) => {
+			global._token = data.token;
+			if (data.result == "success") {
+				$.alert("SAML2 Settings Saved");
 			} else {
 				$.confirm({
 					title: "Error",
@@ -433,7 +501,7 @@ function clearModal() {
 	$("#authMethod").val("Native").trigger("change");
 	$("#teamName").select2().select2('val', '-1');
 	$("input:checkbox").each(function() {
-		if(this.id == "isInsecure") return;
+		if(this.id == "isInsecure" || this.id == "samlForceAuthn") return;
 		$(this).removeAttr("checked");
 		$(this).parent().removeClass("checked");
 	});

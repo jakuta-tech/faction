@@ -171,16 +171,14 @@ let rejectSingleChange = {
 	}
 }
 
-
-
 const editorConfig = {
 	display: 'block',
 	width: '100%',
 	codeMirror: CodeMirror,
 	plugins: [acceptAllChanges, rejectAllChanges, undoLastChange, acceptSingleChange, rejectSingleChange, textStyle, font, fontColor, hiliteColor, link, fontSize, align, image, imageGallery, list, formatBlock, table, blockquote, textStyle],
 	buttonList: [
-		['undo', 'redo', 'font', 'fontSize', 'formatBlock', 'textStyle'],
-		['bold', 'underline', 'italic', 'strike', 'subscript', 'superscript', 'removeFormat'],
+		['undo', 'redo', 'formatBlock' ],
+		['bold', 'underline', 'italic', 'removeFormat'],
 		['fontColor', 'hiliteColor', 'outdent', 'indent', 'align', 'horizontalRule', 'list', 'table'],
 		['link', 'image', 'fullScreen', 'showBlocks'],
 		['acceptAllChanges', 'rejectAllChanges'], ['acceptSingleChange', 'rejectSingleChange']
@@ -197,7 +195,7 @@ const noteConfig = {
 	plugins: [font, fontColor, fontSize, image, align, imageGallery, list, formatBlock, table, blockquote],
 	buttonList: [
 		['undo', 'redo', 'font', 'fontSize', 'formatBlock'],
-		['bold', 'underline', 'italic', 'strike', 'subscript', 'superscript', 'removeFormat'],
+		['bold', 'underline', 'italic', 'removeFormat'],
 	],
 	defaultStyle: 'font-family: arial; font-size: 18px',
 	allowedClassNames: ".*",
@@ -205,6 +203,20 @@ const noteConfig = {
 	height: 500,
 	width: "100%"
 };
+function escapeCodeBlockTags(el) {
+	if (!el || !el.value) return;
+	const temp = document.createElement('div');
+	temp.innerHTML = el.value;
+	temp.querySelectorAll('code, pre').forEach(block => {
+		block.querySelectorAll('script, iframe, object, embed').forEach(dangerous => {
+			dangerous.parentNode.replaceChild(
+				document.createTextNode(dangerous.outerHTML),
+				dangerous
+			);
+		});
+	});
+	el.value = temp.innerHTML;
+}
 function updateVulnEditors() {
 	$.each($("[id^=vuln_]"), function(_id, obj) {
 		let id = $(obj).attr("id");
@@ -213,7 +225,8 @@ function updateVulnEditors() {
 		}
 		if (id.indexOf("notes") == -1) {
 			editorConfig.allowedClassNames=".*";
-			editors[id] = suneditor.create(id, editorConfig)
+			escapeCodeBlockTags(obj);
+			editors[id] = suneditor.create(obj, editorConfig)
 			editors[id].onKeyDown = function(contents, core) {
 				queueSave(id);
 			}
